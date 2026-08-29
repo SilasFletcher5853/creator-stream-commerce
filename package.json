@@ -1,0 +1,19 @@
+{
+  "name": "creator-stream-commerce",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx test/subscriber_state.test.ts",
+    "start": "tsx src/creator_stream.ts"
+  },
+  "dependencies": {
+    "openai": "^4.80.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

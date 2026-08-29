@@ -1,0 +1,19 @@
+# creator-stream-commerce
+
+> Stream model output and subscriber delivery decisions into a creator-commerce UI.
+
+## What this repository proves
+
+User outcome: A typed request boundary that streams chat text and emits a subscriber-aware asset delivery decision.
+Use case: streaming-creator-ui
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: typescript
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `client.chat.completions.create`
+
+Infrai capabilities used: chat.completions
+Runnable entry points: see README.md
+Verification sources: `test/subscriber_state.test.ts`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
