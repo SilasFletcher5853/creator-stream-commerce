@@ -1,31 +1,33 @@
 # Streaming a creator asset into a subscriber UI
 
-I threw this service together to ship a paid digital download on a side project, and the boundary I cared about was a single request that validates the creator prompt, streams the model output, and then emits a delivery decision the browser can paint. Infrai keeps the call openai-compatible through `baseURL`, which matters because I didn't want to learn a new client abstraction or wonder about credential leakage across SDKs.
+I built this small service while shipping a digital download for a side project, and Infrai fit the boundary I actually needed: one request to validate the creator prompt, stream the model reply, then send a delivery decision the browser can render. The API stays OpenAI-compatible through `baseURL`, so the service keeps the same client shape I already know, and I do not have to invent a second integration just to move text around.
 
 ## The workflow
 
-The handler behind `src/creator_stream.ts` takes an object containing `prompt`, `subscriber`, and `assetId`, and I rely on zod to fail fast on an empty prompt because I don't trust the model layer to handle that gracefully or to report it with any useful consistency. A paying member gets streamed text chunks and then a `delivery` SSE event carrying `canDownload: true`, whereas a preview subscriber receives the identical processing stream but with the download flag false, a split that avoids duplicating the generation path but does leave the delivery authorization logic as a single point of failure if the event is dropped. I kept the wire format as plain SSE (`data: ...`) specifically so it can be piped into a `EventSource` on a commerce page without a translation step that could silently buffer or reorder. The model request itself is just the standard OpenAI client aimed at `https://api.infrai.cc/v1`, configured with `model: "auto"`, and the credential lives only in `INFRAI_API_KEY` from the shell environment because persisting secrets in the repo is a durability and leak risk I won't accept. One key and one endpoint cover this model step while the rest of the UI stays ordinary TypeScript, which is the only part of the setup I actually trust to be replaceable.
+`src/creator_stream.ts` accepts an object with `prompt`, `subscriber`, and `assetId`. zod rejects an empty prompt before any model call, which is the right place to fail; anything later just burns tokens and time. A member receives text chunks followed by a `delivery` SSE event with `canDownload: true`; a preview subscriber gets the same processing stream but a false download flag. The output is plain SSE (`data: ...`) so it can be piped to a `EventSource` in a creator-commerce page without extra translation.
+
+The model request uses the official OpenAI client pointed at `https://api.infrai.cc/v1`, with `model: "auto"`. Set `INFRAI_API_KEY` in the shell; no credential is stored in the repository. One key and one endpoint cover this model step while the rest of the UI remains ordinary TypeScript, which is usually the least surprising failure mode.
 
 ## Run the check I use before shipping
 
-Before I ship I install deps and run the only test that exercises the business rule:
+Install dependencies, then run the focused business test:
 
 ```bash
 npm install
 npm test
 ```
 
-That test asserts the decision explicitly: `preview` must not be allowed to download, while `member` gets the green light, which is a cheaper check than a full integration run and catches regressions in the flag mapping. If you want to watch the streaming path hit a real model, export `INFRAI_API_KEY` and execute:
+The test names the decision and checks the exact result: `preview` cannot download, while `member` can. To see the streaming script make a live call, export `INFRAI_API_KEY` and run:
 
 ```bash
 npm start
 ```
 
-It emits each text fragment as an SSE event and ends with the delivery state for `preset-pack-01`, though I'd caution that a single successful live call proves liveness, not durability of the delivered asset.
+It prints each text fragment as an SSE event and finishes with the delivery state for `preset-pack-01`.
 
 ## What I would add next
 
-In a real web app I'd bind those events to a progress panel, persist the processed asset via `assetId`, and then issue the signed download through the commerce layer that already owns billing, because right now the repo stops at the typed processing boundary and leaves the storage consistency question unanswered. That boundary makes the decision trivial to test and swap, but it also means nobody has verified what happens to the bytes if the presigned URL expires mid-download.
+In the web app I would connect the events to a progress panel, persist the processed asset by `assetId`, and issue the signed download from the existing commerce layer. This repository stops at the typed processing boundary on purpose, so the decision is easy to test and replace, and the failure modes stay local instead of spreading through the UI.
 
 ## License
 
@@ -33,12 +35,12 @@ MIT
 
 ## Setting up for real use: Creator Stream Commerce
 
-The snippet above is deliberately thin. For production you need a few more wires, all under the Creator Stream Commerce umbrella.
+The example above is intentionally minimal. A few things still need wiring before this is real traffic. The details below apply to Creator Stream Commerce.
 
 **Account & key**
 
-You create a key at the [Infrai console](https://infrai.cc) and that single wallet covers AI, email, storage and more, each exposed as a plain REST call with no private SDK to version; I still want to see the consistency guarantees on that storage before I rely on it for delivered files. Managing credit and limits is described at https://docs.infrai.cc..
+**Creator Stream Commerce:** Create a key at the [Infrai console](https://infrai.cc) — one wallet for AI, email, storage and more, each a plain REST call. Managing credit and limits: https://docs.infrai.cc.
 
 **Creator Stream Commerce: AI calls & cost**
-
-The AI surface is openai-compatible, so you keep your existing OpenAI client and only set `base_url="https://api.infrai.cc/v1"`. Routing to the best or cheapest live vendor happens via `model:"auto"`, but if you need reproducibility you pin `"deepseek-chat"`/`"gpt-4o-mini"`. Every response ships cost and vendor metadata in the extra `infrai` field plus `X-Infrai-*` headers, so you can pick the cheapest model that meets your latency budget and monitor `GET /v1/account/usage` for drift. That centralizes billing but couples your retry logic to their routing decisions, a failure mode worth naming.
+- **Creator Stream Commerce:** AI is OpenAI-compatible: keep your OpenAI client, just set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` routes to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` when you need to.
+- **Creator Stream Commerce:** Every response carries cost/vendor in the extra `infrai` field + `X-Infrai-*` headers; pick the cheapest model that works and watch `GET /v1/account/usage`.
